@@ -12,8 +12,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Environment/config
-HF_API_KEY = os.getenv("HF_API_KEY") or ""
-HF_MODEL = os.getenv("HF_MODEL") or "meta-llama/Meta-Llama-3-8B-Instruct"
+HF_API_KEY = os.getenv("HF_API_KEY") 
+HF_MODEL = os.getenv("HF_MODEL")
 HF_TIMEOUT = int(os.getenv("HF_TIMEOUT", "60"))  # seconds
 
 if not HF_API_KEY:
@@ -101,10 +101,6 @@ def compute_tdee(weight_kg: float, height_cm: float, age: int, activity: float, 
 
 
 def build_plan_prompt(calories: int, requirements: str = ""):
-    """
-    Construct the prompt sent to the model for one-day vegan plan with per-meal calories and macros.
-    requirements: extra user constraints (e.g., 'high protein', 'no soy', 'Indian foods only')
-    """
     prompt = f"""
 You are a certified registered vegan dietitian. Produce a single-day, 100% PLANT-BASED (vegan) meal plan.
 
@@ -113,19 +109,18 @@ REQUIREMENTS:
 - Provide 5 meals: Breakfast, Snack 1, Lunch, Snack 2, Dinner
 - For each meal include:
   - A short name/title
-  - Bullet list of foods / portions (use simple, easy-to-find items)
+  - Bullet list of foods / portions (only simple Indian plant-based foods)
   - Per-meal calories (e.g., "Breakfast - 420 kcal")
-  - Macro line with exact numbers: "P: {{} } g C: {{} } g F: {{} } g"
-- Use Indian-friendly plant foods where possible (lentils/dal, chana, tofu/soya, millets, rice, vegetables, paneer substitute = tofu, chickpeas, peanuts)
-- Prefer whole foods; avoid rare/exotic ingredients
-- At the end include TOTAL calories and totals for Protein (g), Carbs (g), Fats (g)
-- Produce the plan in a human-readable plain-text format. Use the exact structure above.
+  - Macro line formatted EXACTLY like this:
+    "P: {{protein}} g C: {{carbs}} g F: {{fat}} g"
+- At the end include TOTAL calories and total macros
 
 Extra constraints: {requirements}
 
-Return only the meal plan text (no apologies, no extra metadata).
+Return only the meal plan text.
 """
     return prompt
+
 
 
 @app.route("/", methods=["GET"])
@@ -214,3 +209,4 @@ Return only the meal info (no full-day plan).
 if __name__ == "__main__":
     # Local dev
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=(os.getenv("FLASK_DEBUG") == "1"))
+
