@@ -19,8 +19,12 @@ HF_TIMEOUT = int(os.getenv("HF_TIMEOUT", "60"))  # seconds
 if not HF_API_KEY:
     logger.warning("HF_API_KEY not set. The app will fail to call Hugging Face without it.")
 
-HF_ENDPOINT = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
-HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
+HF_ENDPOINT = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}"
+
+HEADERS = {
+    "Authorization": f"Bearer {HF_API_KEY}",
+    "Content-Type": "application/json"
+}
 
 
 def call_hf(prompt: str, max_new_tokens: int = 350, temperature: float = 0.6):
@@ -209,4 +213,5 @@ Return only the meal info (no full-day plan).
 if __name__ == "__main__":
     # Local dev
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=(os.getenv("FLASK_DEBUG") == "1"))
+
 
