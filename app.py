@@ -1,172 +1,69 @@
 import os
-import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import logging
+from groq import Groq
 
 app = Flask(__name__)
 CORS(app)
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+MODEL = "mistral-7b-instruct"
 
-# Environment/config
-HF_API_KEY = os.getenv("HF_API_KEY")
-# FREE model for router (guaranteed to work)
-HF_MODEL = os.getenv("HF_MODEL", "unsloth/Meta-Llama-3-8B-Instruct")
-HF_TIMEOUT = int(os.getenv("HF_TIMEOUT", "60"))  # seconds
 
-if not HF_API_KEY:
-    logger.warning("HF_API_KEY not set. The app will fail to call Hugging Face without it.")
+def compute_tdee(weight, height, age, activity, goal, gender):
+    weight, height, age = float(weight), float(height), int(age)
 
-HF_ENDPOINT = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}"
-
-HEADERS = {
-    "Authorization": f"Bearer {HF_API_KEY}",
-    "Content-Type": "application/json"
-}
-
-def call_hf(prompt: str, max_new_tokens: int = 350, temperature: float = 0.6):
-    """
-    Call Hugging Face text generation endpoint and return text response.
-    Handles a few common response types.
-    """
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": max_new_tokens,
-            "temperature": temperature,
-            "return_full_text": False
-        }
-    }
-
-    try:
-        resp = requests.post(HF_ENDPOINT, headers=HEADERS, json=payload, timeout=HF_TIMEOUT)
-        resp.raise_for_status()
-    except requests.HTTPError as e:
-        logger.error("HF HTTP error: %s %s", resp.status_code, resp.text)
-        return {"error": "Hugging Face API HTTP error", "status_code": resp.status_code, "details": resp.text}, 502
-    except requests.RequestException as e:
-        logger.exception("Request to Hugging Face failed")
-        return {"error": "Request to Hugging Face failed", "details": str(e)}, 500
-
-    try:
-        parsed = resp.json()
-    except ValueError:
-        logger.error("Invalid JSON from HF: %s", resp.text)
-        return {"error": "Invalid JSON from Hugging Face", "raw": resp.text}, 502
-
-    # Handle standard router response [{"generated_text": "..."}]
-    if isinstance(parsed, list) and len(parsed) > 0 and "generated_text" in parsed[0]:
-        return parsed[0]["generated_text"]
-    if isinstance(parsed, dict) and "generated_text" in parsed:
-        return parsed["generated_text"]
-    if isinstance(parsed, dict) and "error" in parsed:
-        logger.error("HF model error: %s", parsed["error"])
-        return {"error": "Hugging Face model error", "details": parsed["error"]}, 502
-
-    # fallback
-    return str(parsed)
-
-# TDEE computation (same as before)
-def compute_tdee(weight_kg, height_cm, age, activity, gender="neutral", goal="maintain"):
-    weight = float(weight_kg)
-    height = float(height_cm)
-    age = int(age)
-    activity = float(activity)
-
-    if gender.lower() == "male":
-        bmr = 10 * weight + 6.25 * height - 5 * age + 5
+    if gender == "male":
+        bmr = 10*weight + 6.25*height - 5*age + 5
     else:
-        bmr = 10 * weight + 6.25 * height - 5 * age - 161
+        bmr = 10*weight + 6.25*height - 5*age - 161
 
-    tdee = bmr * activity
+    tdee = bmr * float(activity)
 
     if goal == "loss":
         tdee -= 400
     elif goal == "gain":
         tdee += 350
 
-    return max(1200, round(tdee))
+    return int(max(1200, tdee))
 
-# Meal plan prompt
-def build_plan_prompt(calories, requirements=""):
-    return f"""
-You are a certified registered vegan dietitian. Produce a single-day, 100% PLANT-BASED (vegan) meal plan.
-
-REQUIREMENTS:
-- Total daily calories: {calories} kcal
-- Provide 5 meals: Breakfast, Snack 1, Lunch, Snack 2, Dinner
-- For each meal include:
-  - A short name/title
-  - Bullet list of foods / portions (only simple Indian plant-based foods)
-  - Per-meal calories (e.g., "Breakfast - 420 kcal")
-  - Macro line formatted EXACTLY like this:
-    "P: {{protein}} g C: {{carbs}} g F: {{fat}} g"
-- At the end include TOTAL calories and total macros
-
-Extra constraints: {requirements}
-
-Return only the meal plan text.
-"""
-
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"status": "ok", "message": "AI Vegan Meal Planner (Hugging Face) is running."})
 
 @app.route("/plan", methods=["POST"])
 def plan():
-    data = request.get_json(force=True)
-    try:
-        weight = data.get("weight")
-        height = data.get("height")
-        age = data.get("age")
-        activity = data.get("activity", 1.3)
-        goal = data.get("goal", "maintain")
-        gender = data.get("gender", "neutral")
-        reqs = data.get("requirements", "")
-        calories = compute_tdee(weight, height, age, activity, gender, goal)
-    except Exception as e:
-        return jsonify({"error": "Invalid input", "details": str(e)}), 400
+    data = request.json
 
-    prompt = build_plan_prompt(calories, reqs)
-    logger.info("Calling HF for plan with calories=%s", calories)
-    result = call_hf(prompt)
+    age = data.get("age")
+    weight = data.get("weight")
+    height = data.get("height")
+    activity = data.get("activity", 1.3)
+    goal = data.get("goal", "maintain")
+    gender = data.get("gender", "female")
 
-    if isinstance(result, tuple) and isinstance(result[0], dict):
-        return jsonify(result[0]), result[1]
-
-    return jsonify({"calories": calories, "plan_text": result})
-
-@app.route("/single-meal", methods=["POST"])
-def single_meal():
-    data = request.get_json(force=True)
-    meal = data.get("meal")
-    target = data.get("target_calories")
-    reqs = data.get("requirements", "")
-
-    if not meal or not target:
-        return jsonify({"error": "Please provide 'meal' and 'target_calories'"}), 400
+    calories = compute_tdee(weight, height, age, activity, goal, gender)
 
     prompt = f"""
-You are a vegan registered dietitian. Regenerate ONLY ONE meal named "{meal}".
-Target per-meal calories: {target} kcal.
-Include:
- - Meal title
- - Foods/portions
- - Per-meal calories (e.g., "{meal} - {target} kcal")
- - Macro breakdown "P: x g C: y g F: z g"
-Use only plant-based ingredients. {reqs}
-Return only the meal info (no full-day plan).
+Create a full-day **vegan Indian meal plan** within {calories} kcal.
+Return 5 meals with:
+- Meal name
+- Food items + portions
+- Calories per meal
+- Macro line exactly like: P: 00 g C: 00 g F: 00 g
 """
-    logger.info("Calling HF single-meal for %s calories", target)
-    result = call_hf(prompt)
 
-    if isinstance(result, tuple) and isinstance(result[0], dict):
-        return jsonify(result[0]), result[1]
+    reply = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=400,
+        temperature=0.7
+    ).choices[0].message["content"]
 
-    return jsonify({"meal": meal, "meal_text": result})
+    return jsonify({"plan": reply, "calories": calories})
+
+
+@app.route("/", methods=["GET"])
+def root():
+    return "Meal Planner API Running"
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=(os.getenv("FLASK_DEBUG")=="1"))
+    app.run(host="0.0.0.0", port=5000)
