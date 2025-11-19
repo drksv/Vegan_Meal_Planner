@@ -6,7 +6,7 @@ from groq import Groq
 app = Flask(__name__)
 CORS(app)
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = Groq(api_key=os.getenv("hto_vegan_meal_planner"))
 MODEL = "mistral-7b-instruct"
 
 
@@ -67,3 +67,4 @@ def root():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
