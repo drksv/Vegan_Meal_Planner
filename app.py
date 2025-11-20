@@ -6,58 +6,83 @@ from groq import Groq
 app = Flask(__name__)
 CORS(app)
 
+# Use a dedicated key for meal planner
 client = Groq(api_key=os.getenv("GROQ_API_KEY_MEAL"))
-MODEL = "mistral-7b-instant"
+MODEL = "mistral-7b-instant"   # VALID on Groq
 
 
 def compute_tdee(weight, height, age, activity, goal, gender):
     weight, height, age = float(weight), float(height), int(age)
 
-    if gender == "male":
-        bmr = 10*weight + 6.25*height - 5*age + 5
+    # Basal Metabolic Rate
+    if gender.lower() == "male":
+        bmr = 10 * weight + 6.25 * height - 5 * age + 5
     else:
-        bmr = 10*weight + 6.25*height - 5*age - 161
+        bmr = 10 * weight + 6.25 * height - 5 * age - 161
 
+    # Total Daily Energy Expenditure
     tdee = bmr * float(activity)
 
+    # Adjust for goal
     if goal == "loss":
         tdee -= 400
     elif goal == "gain":
         tdee += 350
 
-    return int(max(1200, tdee))
+    return int(max(1200, tdee))  # never below 1200 kcal
 
 
 @app.route("/plan", methods=["POST"])
 def plan():
-    data = request.json
+    try:
+        data = request.json
 
-    age = data.get("age")
-    weight = data.get("weight")
-    height = data.get("height")
-    activity = data.get("activity", 1.3)
-    goal = data.get("goal", "maintain")
-    gender = data.get("gender", "female")
+        age = data.get("age")
+        weight = data.get("weight")
+        height = data.get("height")
+        activity = data.get("activity", 1.3)
+        goal = data.get("goal", "maintain")
+        gender = data.get("gender", "female")
 
-    calories = compute_tdee(weight, height, age, activity, goal, gender)
+        calories = compute_tdee(weight, height, age, activity, goal, gender)
 
-    prompt = f"""
-Create a full-day **vegan Indian meal plan** within {calories} kcal.
-Return 5 meals with:
-- Meal name
+        system_prompt = (
+            "You are a certified nutritionist specializing in vegan Indian diets. "
+            "Always format meals cleanly with calories and macros."
+        )
+
+        user_prompt = f"""
+Create a full-day **100% vegan Indian meal plan** within **{calories} kcal**.
+Return exactly 5 meals:
+
+For each meal include:
+- Meal Name
 - Food items + portions
 - Calories per meal
-- Macro line exactly like: P: 00 g C: 00 g F: 00 g
+- Macro line EXACTLY like this:
+  P: 00 g  C: 00 g  F: 00 g
+
+Do not exceed total calories.
 """
 
-    reply = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=400,
-        temperature=0.7
-    ).choices[0].message["content"]
+        # GROQ API CALL
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
 
-    return jsonify({"plan": reply, "calories": calories})
+        reply = response.choices[0].message["content"]
+
+        return jsonify({"plan": reply, "calories": calories})
+
+    except Exception as e:
+        print("Meal Planner Error:", e)
+        return jsonify({"error": "Meal planner failed", "details": str(e)}), 500
 
 
 @app.route("/", methods=["GET"])
@@ -67,7 +92,3 @@ def root():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
-
-
-
