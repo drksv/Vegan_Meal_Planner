@@ -8,7 +8,7 @@ CORS(app)
 
 # Use a dedicated key for meal planner
 client = Groq(api_key=os.getenv("GROQ_API_KEY_MEAL"))
-MODEL = "llama3-8b-8192"   # VALID on Groq
+MODEL = "llama3-70b-8192"   # VALID on Groq
 
 
 def compute_tdee(weight, height, age, activity, goal, gender):
@@ -92,4 +92,3 @@ def root():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
