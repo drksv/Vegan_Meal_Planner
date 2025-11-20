@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY_MEAL"))
-MODEL = "llama-3.1-8b-instant"
+MODEL = "mistral-7b-instant"
 
 
 def compute_tdee(weight, height, age, activity, goal, gender):
@@ -67,6 +67,7 @@ def root():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
 
 
 
