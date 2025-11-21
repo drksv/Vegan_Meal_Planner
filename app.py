@@ -3,92 +3,82 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from groq import Groq
 
+# ----------------- IN-MEMORY USER PREFERENCES -----------------
+user_preferences = {}
+
 app = Flask(__name__)
 CORS(app)
 
-# Use a dedicated key for meal planner
-client = Groq(api_key=os.getenv("GROQ_API_KEY_MEAL"))
-MODEL = "llama3-70b-8192"   # VALID on Groq
+# ----------------- INIT GROQ CLIENT -----------------
+api_key = os.getenv("GROQ_API_KEY_MEAL")
+if not api_key:
+    print("WARNING: GROQ_API_KEY_MEAL is not set.")
+
+client = Groq(api_key=api_key)
+
+MODEL = "llama-3.1-8b-instant"
 
 
-def compute_tdee(weight, height, age, activity, goal, gender):
-    weight, height, age = float(weight), float(height), int(age)
+@app.route("/meal", methods=["POST"])
+def meal_plan():
+    """Vegan meal planner endpoint"""
+    data = request.json
+    message = data.get("message")
+    user_id = data.get("user_id", "default_user_123")
 
-    # Basal Metabolic Rate
-    if gender.lower() == "male":
-        bmr = 10 * weight + 6.25 * height - 5 * age + 5
-    else:
-        bmr = 10 * weight + 6.25 * height - 5 * age - 161
+    if not message:
+        return jsonify({"error": "No message provided"}), 400
 
-    # Total Daily Energy Expenditure
-    tdee = bmr * float(activity)
+    # Load or set default preferences
+    prefs = user_preferences.get(
+        user_id,
+        {
+            "age": "unknown",
+            "gender": "unknown",
+            "calories": "1800",
+            "cuisine": "Indian"
+        }
+    )
 
-    # Adjust for goal
-    if goal == "loss":
-        tdee -= 400
-    elif goal == "gain":
-        tdee += 350
+    # Save back to memory
+    user_preferences[user_id] = prefs
 
-    return int(max(1200, tdee))  # never below 1200 kcal
+    # SYSTEM MESSAGE — VEGAN MEAL PLANNER
+    system_message = (
+        f"You are a certified vegan nutrition specialist. The user is a "
+        f"{prefs['age']}-year-old {prefs['gender']} who prefers {prefs['cuisine']} cuisine "
+        f"and consumes around {prefs['calories']} calories per day. "
+        f"Create detailed vegan meal plans including macronutrient breakdown, ingredients, "
+        f"portion sizes, and easy preparation steps. Avoid animal products completely. "
+        f"Include optional substitutes and health benefits."
+    )
 
-
-@app.route("/plan", methods=["POST"])
-def plan():
     try:
-        data = request.json
-
-        age = data.get("age")
-        weight = data.get("weight")
-        height = data.get("height")
-        activity = data.get("activity", 1.3)
-        goal = data.get("goal", "maintain")
-        gender = data.get("gender", "female")
-
-        calories = compute_tdee(weight, height, age, activity, goal, gender)
-
-        system_prompt = (
-            "You are a certified nutritionist specializing in vegan Indian diets. "
-            "Always format meals cleanly with calories and macros."
-        )
-
-        user_prompt = f"""
-Create a full-day **100% vegan Indian meal plan** within **{calories} kcal**.
-Return exactly 5 meals:
-
-For each meal include:
-- Meal Name
-- Food items + portions
-- Calories per meal
-- Macro line EXACTLY like this:
-  P: 00 g  C: 00 g  F: 00 g
-
-Do not exceed total calories.
-"""
-
-        # GROQ API CALL
-        response = client.chat.completions.create(
+        groq_response = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": message}
             ],
-            max_tokens=500,
+            max_tokens=600,
             temperature=0.7
         )
 
-        reply = response.choices[0].message["content"]
+        # ---------------- FIX: ACCESS MESSAGE CONTENT CORRECTLY ----------------
+        reply = groq_response.choices[0].message["content"]
 
-        return jsonify({"plan": reply, "calories": calories})
+        return jsonify({"response": reply})
 
     except Exception as e:
-        print("Meal Planner Error:", e)
-        return jsonify({"error": "Meal planner failed", "details": str(e)}), 500
+        print(f"ERROR processing Groq API request: {e}")
+        return jsonify({"error": "Groq API failed", "details": str(e)}), 500
 
 
-@app.route("/", methods=["GET"])
-def root():
-    return "Meal Planner API Running"
+@app.route("/")
+def home():
+    return "Vegan Meal Planner API Running"
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5002))  # Different port if running both APIs
+    app.run(host="0.0.0.0", port=port, debug=True)
