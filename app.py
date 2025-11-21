@@ -3,54 +3,72 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from groq import Groq
 
-# ----------------- IN-MEMORY USER PREFERENCES -----------------
 user_preferences = {}
 
 app = Flask(__name__)
-CORS(app)
 
-# ----------------- INIT GROQ CLIENT -----------------
+# Strict CORS config for Render
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://healthtimeout.in",
+            "https://www.healthtimeout.in"
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
+
+# Add CORS headers for ALL responses (critical for Render)
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "https://healthtimeout.in"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+
+# ---------------- INIT GROQ CLIENT ----------------
 api_key = os.getenv("GROQ_API_KEY_MEAL")
-if not api_key:
-    print("WARNING: GROQ_API_KEY_MEAL is not set.")
-
 client = Groq(api_key=api_key)
 
 MODEL = "llama-3.1-8b-instant"
 
 
-@app.route("/meal", methods=["POST"])
+# ---------------- FIXED: ENDPOINT NAME MUST MATCH FRONTEND ----------------
+@app.route("/plan", methods=["POST", "OPTIONS"])
 def meal_plan():
-    """Vegan meal planner endpoint"""
+
+    # Handle CORS preflight
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     data = request.json
-    message = data.get("message")
+    message = (
+        f"Create a vegan meal plan for a person with: "
+        f"age {data.get('age')}, weight {data.get('weight')}, height {data.get('height')}, "
+        f"activity level {data.get('activity')}, goal {data.get('goal')}."
+    )
+
     user_id = data.get("user_id", "default_user_123")
 
-    if not message:
-        return jsonify({"error": "No message provided"}), 400
-
-    # Load or set default preferences
     prefs = user_preferences.get(
         user_id,
         {
-            "age": "unknown",
+            "age": data.get("age"),
             "gender": "unknown",
             "calories": "1800",
             "cuisine": "Indian"
         }
     )
-
-    # Save back to memory
     user_preferences[user_id] = prefs
 
-    # SYSTEM MESSAGE — VEGAN MEAL PLANNER
     system_message = (
-        f"You are a certified vegan nutrition specialist. The user is a "
-        f"{prefs['age']}-year-old {prefs['gender']} who prefers {prefs['cuisine']} cuisine "
-        f"and consumes around {prefs['calories']} calories per day. "
-        f"Create detailed vegan meal plans including macronutrient breakdown, ingredients, "
-        f"portion sizes, and easy preparation steps. Avoid animal products completely. "
-        f"Include optional substitutes and health benefits."
+        f"You are a certified vegan nutritionist. The user is a {prefs['age']}-year-old "
+        f"{prefs['gender']} who prefers {prefs['cuisine']} cuisine and consumes "
+        f"{prefs['calories']} calories. Provide a full vegan meal plan with macro split, "
+        f"ingredients, timings, and recipes."
     )
 
     try:
@@ -64,21 +82,20 @@ def meal_plan():
             temperature=0.7
         )
 
-        # ---------------- FIX: ACCESS MESSAGE CONTENT CORRECTLY ----------------
-        reply = groq_response.choices[0].message["content"]
+        reply = groq_response.choices[0].message.content
 
         return jsonify({"response": reply})
 
     except Exception as e:
-        print(f"ERROR processing Groq API request: {e}")
+        print("ERROR:", e)
         return jsonify({"error": "Groq API failed", "details": str(e)}), 500
 
 
 @app.route("/")
 def home():
-    return "Vegan Meal Planner API Running"
+    return "Meal Planner API Running"
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5002))  # Different port if running both APIs
+    port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port, debug=True)
