@@ -66,8 +66,8 @@ def meal_plan():
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": message}
             ],
-            max_tokens=600,
-            temperature=0.7
+            max_tokens=1200,
+            temperature=0.5
         )
 
         reply = groq_response.choices[0].message.content
@@ -85,3 +85,4 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port)
+
