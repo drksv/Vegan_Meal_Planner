@@ -7,7 +7,6 @@ user_preferences = {}
 
 app = Flask(__name__)
 
-# CORS for Render (must match frontend origin)
 CORS(app, resources={r"/*": {"origins": [
     "https://healthtimeout.in",
     "https://www.healthtimeout.in"
@@ -20,10 +19,49 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
-# GROQ
+
+# ---------- GROQ CONFIG ----------
 api_key = os.getenv("GROQ_API_KEY_MEAL")
 client = Groq(api_key=api_key)
 MODEL = "llama-3.1-8b-instant"
+
+MAX_TOKENS = 1200
+TEMPERATURE = 0.5
+MAX_CONTINUATIONS = 3   # safety limit
+
+
+def generate_with_continuation(messages):
+    """Auto-continue if Groq output is truncated"""
+    full_reply = ""
+    current_messages = messages.copy()
+
+    for _ in range(MAX_CONTINUATIONS):
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=current_messages,
+            max_tokens=MAX_TOKENS,
+            temperature=TEMPERATURE
+        )
+
+        choice = response.choices[0]
+        content = choice.message.content
+        finish_reason = choice.finish_reason
+
+        full_reply += content
+
+        if finish_reason != "length":
+            break  # completed normally
+
+        # Ask model to continue
+        current_messages.append(
+            {"role": "assistant", "content": content}
+        )
+        current_messages.append(
+            {"role": "user", "content": "Continue exactly from where you stopped."}
+        )
+
+    return full_reply
+
 
 @app.route("/plan", methods=["POST", "OPTIONS"])
 def meal_plan():
@@ -32,13 +70,6 @@ def meal_plan():
         return jsonify({"ok": True}), 200
 
     data = request.json
-
-    message = (
-        f"Create a vegan meal plan for: "
-        f"age {data.get('age')}, weight {data.get('weight')}, "
-        f"height {data.get('height')}, activity {data.get('activity')}, goal {data.get('goal')}."
-    )
-
     user_id = data.get("user_id", "default_user")
 
     prefs = user_preferences.get(
@@ -55,24 +86,29 @@ def meal_plan():
     system_message = (
         f"You are a vegan nutritionist advising a {prefs['age']}-year-old "
         f"{prefs['gender']} who eats {prefs['cuisine']} cuisine and "
-        f"consumes {prefs['calories']} calories. Provide a full vegan plan "
-        f"with macros, ingredients, and recipes."
+        f"consumes {prefs['calories']} calories. "
+        f"Provide a COMPLETE vegan meal plan with:\n"
+        f"- daily meals\n- macros\n- ingredients\n- recipes\n"
+        f"Do NOT stop mid-sentence."
+    )
+
+    user_message = (
+        f"Create a vegan meal plan for:\n"
+        f"Age: {data.get('age')}\n"
+        f"Weight: {data.get('weight')} kg\n"
+        f"Height: {data.get('height')} cm\n"
+        f"Activity: {data.get('activity')}\n"
+        f"Goal: {data.get('goal')}"
     )
 
     try:
-        groq_response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": message}
-            ],
-            max_tokens=1200,
-            temperature=0.5
-        )
-
-        reply = groq_response.choices[0].message.content
+        reply = generate_with_continuation([
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ])
 
         return jsonify({"response": reply})
+
     except Exception as e:
         return jsonify({"error": "Groq failed", "details": str(e)}), 500
 
@@ -85,4 +121,3 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port)
-
