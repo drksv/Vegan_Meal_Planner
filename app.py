@@ -84,39 +84,36 @@ def meal_plan():
     user_preferences[user_id] = prefs
 
 system_message = (
-    f"You are a vegan nutritionist advising a {prefs['age']}-year-old "
-    f"{prefs['gender']} who eats {prefs['cuisine']} cuisine and "
-    f"consumes {prefs['calories']} calories.\n\n"
+    f"You are a vegan nutritionist.\n\n"
+    f"Give EXACTLY ONE vegan meal idea for TODAY ONLY.\n"
+    f"Do NOT provide multiple ideas.\n"
+    f"Do NOT number anything.\n"
+    f"Do NOT use bullet points.\n\n"
 
-    f"Create a COMPLETE vegan meal plan for **TODAY ONLY (1 DAY)**.\n"
-    f"Do NOT include multiple days or weekly plans.\n\n"
+    f"Structure the response using ONLY these section titles:\n"
+    f"Meal\n"
+    f"Macros\n"
+    f"Ingredients\n"
+    f"Recipe\n\n"
 
-    f"Include ONLY the following sections:\n"
-    f"1. Breakfast\n"
-    f"2. Lunch\n"
-    f"3. Evening Snack\n"
-    f"4. Dinner\n"
-    f"5. Today Macros Summary\n\n"
+    f"Rules:\n"
+    f"- Meal: one short sentence\n"
+    f"- Macros: one line with calories, protein, carbs, fats\n"
+    f"- Ingredients: maximum 5 items in a single line\n"
+    f"- Recipe: maximum 3 short steps in one paragraph\n\n"
 
-    f"For EACH MEAL provide:\n"
-    f"- Dish name\n"
-    f"- Calories\n"
-    f"- Protein, Carbs, Fats (grams)\n"
-    f"- Ingredients (max 5 items)\n"
-    f"- Short recipe (max 4 steps)\n\n"
-
-    f"Keep the response concise and structured.\n"
-    f"Do NOT exceed what is needed for one day.\n"
-    f"Do NOT stop mid-sentence."
+    f"Keep total response under 180 words.\n"
+    f"End cleanly. Do NOT stop mid-sentence."
 )
 
 
-    user_message = (
-    f"Plan TODAY'S vegan meals based on:\n"
+
+   user_message = (
+    f"User details:\n"
     f"Age: {data.get('age')}\n"
     f"Weight: {data.get('weight')} kg\n"
     f"Height: {data.get('height')} cm\n"
-    f"Activity Level: {data.get('activity')}\n"
+    f"Activity: {data.get('activity')}\n"
     f"Goal: {data.get('goal')}\n"
 )
 
@@ -140,4 +137,5 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port)
+
 
