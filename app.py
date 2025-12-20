@@ -83,23 +83,42 @@ def meal_plan():
     )
     user_preferences[user_id] = prefs
 
-    system_message = (
-        f"You are a vegan nutritionist advising a {prefs['age']}-year-old "
-        f"{prefs['gender']} who eats {prefs['cuisine']} cuisine and "
-        f"consumes {prefs['calories']} calories. "
-        f"Provide a COMPLETE vegan meal plan with:\n"
-        f"- daily meals\n- macros\n- ingredients\n- recipes\n"
-        f"Do NOT stop mid-sentence."
-    )
+system_message = (
+    f"You are a vegan nutritionist advising a {prefs['age']}-year-old "
+    f"{prefs['gender']} who eats {prefs['cuisine']} cuisine and "
+    f"consumes {prefs['calories']} calories.\n\n"
+
+    f"Create a COMPLETE vegan meal plan for **TODAY ONLY (1 DAY)**.\n"
+    f"Do NOT include multiple days or weekly plans.\n\n"
+
+    f"Include ONLY the following sections:\n"
+    f"1. Breakfast\n"
+    f"2. Lunch\n"
+    f"3. Evening Snack\n"
+    f"4. Dinner\n"
+    f"5. Today Macros Summary\n\n"
+
+    f"For EACH MEAL provide:\n"
+    f"- Dish name\n"
+    f"- Calories\n"
+    f"- Protein, Carbs, Fats (grams)\n"
+    f"- Ingredients (max 5 items)\n"
+    f"- Short recipe (max 4 steps)\n\n"
+
+    f"Keep the response concise and structured.\n"
+    f"Do NOT exceed what is needed for one day.\n"
+    f"Do NOT stop mid-sentence."
+)
+
 
     user_message = (
-        f"Create a vegan meal plan for:\n"
-        f"Age: {data.get('age')}\n"
-        f"Weight: {data.get('weight')} kg\n"
-        f"Height: {data.get('height')} cm\n"
-        f"Activity: {data.get('activity')}\n"
-        f"Goal: {data.get('goal')}"
-    )
+    f"Plan TODAY'S vegan meals based on:\n"
+    f"Age: {data.get('age')}\n"
+    f"Weight: {data.get('weight')} kg\n"
+    f"Height: {data.get('height')} cm\n"
+    f"Activity Level: {data.get('activity')}\n"
+    f"Goal: {data.get('goal')}\n"
+)
 
     try:
         reply = generate_with_continuation([
@@ -121,3 +140,4 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port)
+
