@@ -23,44 +23,20 @@ def add_cors_headers(response):
 # ---------- GROQ CONFIG ----------
 api_key = os.getenv("GROQ_API_KEY_MEAL")
 client = Groq(api_key=api_key)
+
 MODEL = "llama-3.1-8b-instant"
-
-MAX_TOKENS = 1200
-TEMPERATURE = 0.5
-MAX_CONTINUATIONS = 3   # safety limit
+MAX_TOKENS = 550          # SAFE for 4 meals
+TEMPERATURE = 0.3
 
 
-def generate_with_continuation(messages):
-    """Auto-continue if Groq output is truncated"""
-    full_reply = ""
-    current_messages = messages.copy()
-
-    for _ in range(MAX_CONTINUATIONS):
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=current_messages,
-            max_tokens=MAX_TOKENS,
-            temperature=TEMPERATURE
-        )
-
-        choice = response.choices[0]
-        content = choice.message.content
-        finish_reason = choice.finish_reason
-
-        full_reply += content
-
-        if finish_reason != "length":
-            break  # completed normally
-
-        # Ask model to continue
-        current_messages.append(
-            {"role": "assistant", "content": content}
-        )
-        current_messages.append(
-            {"role": "user", "content": "Continue exactly from where you stopped."}
-        )
-
-    return full_reply
+def generate_response(messages):
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE
+    )
+    return response.choices[0].message.content
 
 
 @app.route("/plan", methods=["POST", "OPTIONS"])
@@ -69,7 +45,7 @@ def meal_plan():
     if request.method == "OPTIONS":
         return jsonify({"ok": True}), 200
 
-    data = request.json
+    data = request.json or {}
     user_id = data.get("user_id", "default_user")
 
     prefs = user_preferences.get(
@@ -83,42 +59,46 @@ def meal_plan():
     )
     user_preferences[user_id] = prefs
 
-system_message = (
-    f"You are a vegan nutritionist.\n\n"
-    f"Give EXACTLY ONE vegan meal idea for TODAY ONLY.\n"
-    f"Do NOT provide multiple ideas.\n"
-    f"Do NOT number anything.\n"
-    f"Do NOT use bullet points.\n\n"
+    # ---------- SYSTEM PROMPT ----------
+    system_message = (
+        "You are a vegan nutritionist.\n\n"
+        "Create a vegan meal plan for TODAY ONLY with exactly four meals.\n"
+        "The meals must be Breakfast, Lunch, Evening Snack, and Dinner.\n\n"
 
-    f"Structure the response using ONLY these section titles:\n"
-    f"Meal\n"
-    f"Macros\n"
-    f"Ingredients\n"
-    f"Recipe\n\n"
+        "Rules:\n"
+        "Do NOT provide extra meals.\n"
+        "Do NOT number anything.\n"
+        "Do NOT use bullet points.\n"
+        "Do NOT add explanations or tips.\n\n"
 
-    f"Rules:\n"
-    f"- Meal: one short sentence\n"
-    f"- Macros: one line with calories, protein, carbs, fats\n"
-    f"- Ingredients: maximum 5 items in a single line\n"
-    f"- Recipe: maximum 3 short steps in one paragraph\n\n"
+        "Use ONLY these section titles in this exact order:\n"
+        "Breakfast\n"
+        "Lunch\n"
+        "Evening Snack\n"
+        "Dinner\n\n"
 
-    f"Keep total response under 180 words.\n"
-    f"End cleanly. Do NOT stop mid-sentence."
-)
+        "For EACH section provide exactly:\n"
+        "One short meal sentence.\n"
+        "One macros line with calories, protein, carbs, fats.\n"
+        "One ingredients line with max 5 items.\n"
+        "One recipe paragraph with max 3 short steps.\n\n"
 
+        "Keep the entire response under 280 words.\n"
+        "End cleanly. Do NOT stop mid-sentence."
+    )
 
-
-   user_message = (
-    f"User details:\n"
-    f"Age: {data.get('age')}\n"
-    f"Weight: {data.get('weight')} kg\n"
-    f"Height: {data.get('height')} cm\n"
-    f"Activity: {data.get('activity')}\n"
-    f"Goal: {data.get('goal')}\n"
-)
+    # ---------- USER PROMPT ----------
+    user_message = (
+        f"User details:\n"
+        f"Age: {data.get('age')}\n"
+        f"Weight: {data.get('weight')} kg\n"
+        f"Height: {data.get('height')} cm\n"
+        f"Activity: {data.get('activity')}\n"
+        f"Goal: {data.get('goal')}"
+    )
 
     try:
-        reply = generate_with_continuation([
+        reply = generate_response([
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
         ])
@@ -126,7 +106,10 @@ system_message = (
         return jsonify({"response": reply})
 
     except Exception as e:
-        return jsonify({"error": "Groq failed", "details": str(e)}), 500
+        return jsonify({
+            "error": "Groq failed",
+            "details": str(e)
+        }), 500
 
 
 @app.route("/")
@@ -137,5 +120,3 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=port)
-
-
