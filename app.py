@@ -7,19 +7,20 @@ user_preferences = {}
 
 app = Flask(__name__)
 
-CORS(app, resources={r"/*": {"origins": [
-    "https://healthtimeout.in",
-    "https://www.healthtimeout.in",
-    "https://healthtimeout.infinityfree.me",
-    "https://healthtimeout.infinityfree.me/wp/"
-]}})
+CORS(
+    app,
+    resources={r"/*": {
+        "origins": [
+            "https://healthtimeout.in",
+            "https://www.healthtimeout.in",
+            "https://healthtimeout.infinityfree.me",
+            "https://healthtimeout.infinityfree.me/wp"
+        ]
+    }},
+    supports_credentials=False
+)
 
-@app.after_request
-def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "https://healthtimeout.in"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    return response
+
 
 
 # ---------- GROQ CONFIG ----------
