@@ -10,6 +10,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": [
     "https://healthtimeout.in",
     "https://www.healthtimeout.in",
+    "https://healthtimeout.infinityfree.me",
     "https://healthtimeout.infinityfree.me/wp/"
 ]}})
 
